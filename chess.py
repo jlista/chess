@@ -25,6 +25,7 @@ def print_board(board):
 
 game_state = Game_State()
 game_state.setup_pieces()
+is_white_move = True
 eval = Evaluator()
 
 # moves = ["Pc-c4", "Pf-f5", "Qd-c2"]
@@ -37,10 +38,10 @@ eval = Evaluator()
 
 for m in range(240):
 
-    if not game_state.is_white_move:
+    if not is_white_move:
 
         start_time = time.time()
-        candidates = eval.find_lines([], game_state, 1)
+        candidates = eval.find_top_moves(game_state, is_white_move)
         end_time = time.time()
         elapsed_time = end_time - start_time
 
@@ -65,7 +66,7 @@ for m in range(240):
     else:
         while True:
             move_notation = input("Please enter your move.")
-            move = game_state.move_from_notation(move_notation)
+            move = game_state.move_from_notation(move_notation, is_white_move)
             if move is not None and eval.is_legal_move(move,game_state):
                 game_state.execute(move)
                 break
@@ -75,5 +76,5 @@ for m in range(240):
 
 
     print_board(game_state.board)
-
-    game_state.is_white_move = not game_state.is_white_move
+    is_white_move = not is_white_move
+    #game_state.is_white_move = not game_state.is_white_move

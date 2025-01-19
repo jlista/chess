@@ -9,7 +9,8 @@ class Game_State:
     board = []
     seers = []
     potential_moves = []
-    is_white_move = True
+    past_states = []
+    #is_white_move = True
 
     has_white_castled = False
     has_black_castled = False
@@ -25,6 +26,7 @@ class Game_State:
         new_state.pieces = copy.deepcopy(self.pieces)
         for piece in new_state.pieces:
             new_state.board[piece.loc_rank][piece.loc_file] = piece
+        new_state.past_state = self.board
         return new_state
 
     def setup_pieces(self):
@@ -166,7 +168,7 @@ class Game_State:
             
         
 
-    def move_from_notation(self,notation):
+    def move_from_notation(self,notation, is_white):
 
         label_map = {
             "P": Piece_Type.PAWN,
@@ -180,14 +182,14 @@ class Game_State:
         move = None
         if notation == "O-O":
             dest_rank = 5
-            dest_file = 0 if self.is_white_move else 7
-            mock_piece = Piece(Piece_Type.KING, self.is_white_move,None,None)
+            dest_file = 0 if is_white else 7
+            mock_piece = Piece(Piece_Type.KING, is_white,None,None)
             move = Move(mock_piece,dest_rank,dest_file,Move_Type.CASTLE_KINGSIDE)
 
         elif notation == "O-O-O":
             dest_rank = 3
-            dest_file = 0 if self.is_white_move else 7
-            mock_piece = Piece(Piece_Type.KING, self.is_white_move,None,None)
+            dest_file = 0 if is_white else 7
+            mock_piece = Piece(Piece_Type.KING, is_white,None,None)
             move = Move(mock_piece,dest_rank,dest_file,Move_Type.CASTLE_QUEENSIDE)
 
         else:
@@ -202,7 +204,7 @@ class Game_State:
 
             piece_to_move = None
             for piece in self.find_potential_moves(dest_rank,dest_file):
-                if piece.is_white == self.is_white_move and piece.piece_type == piece_type:
+                if piece.is_white == is_white and piece.piece_type == piece_type:
                     if piece.loc_file == src_file:
                         piece_to_move = piece
             if piece_to_move is not None:
@@ -221,14 +223,14 @@ class Game_State:
             self.move_piece(move.piece,move.dest_rank,move.dest_file)
 
         elif move.move_type == Move_Type.CASTLE_KINGSIDE:
-            rook_start,rook_dest,king_start,king_dest,gap = get_castling_coordinates(True,self.is_white_move)
+            rook_start,rook_dest,king_start,king_dest,gap = get_castling_coordinates(True,move.is_white)
             king = self.board[king_start[0]][king_start[1]]
             rook = self.board[rook_start[0]][rook_start[1]]
             self.move_piece(king,king_dest[0],king_dest[1])
             self.move_piece(rook,rook_dest[0],rook_dest[1])
 
         elif move.move_type == Move_Type.CASTLE_QUEENSIDE:
-            rook_start,rook_dest,king_start,king_dest,gap = get_castling_coordinates(False,self.is_white_move)
+            rook_start,rook_dest,king_start,king_dest,gap = get_castling_coordinates(False,move.is_white)
             king = self.board[king_start[0]][king_start[1]]
             rook = self.board[rook_start[0]][rook_start[1]]
             self.move_piece(king,king_dest[0],king_dest[1])
@@ -275,6 +277,7 @@ class Game_State:
         start_time = time.time()
         self.calculate_seers()
         self.calculate_potential_moves()
+        #self.is_white_move = not self.is_white_move
         # for r in range(8):
         #     for f in range(8):
         #         self.seers[r][f] = self.find_seers(r,f)

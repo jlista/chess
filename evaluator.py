@@ -7,38 +7,43 @@ from typing import List
 from utils import *
 class Evaluator:
 
-    def find_legal_moves(self, game_state):
+    def find_legal_moves(self, game_state, is_white):
         legal_moves = []
         for piece in game_state.pieces:
-            if piece.is_white == game_state.is_white_move:
+            if piece.is_white == is_white:
                 candidates = piece.get_potential_moves(game_state.board)
                 for candidate in candidates:
                     move = Move(piece,candidate[0],candidate[1])
                     if self.is_legal_move(move,game_state):
                         legal_moves.append(move)
 
-        if self.can_castle(game_state,game_state.is_white_move, True):
+        if self.can_castle(game_state,is_white, True):
             dest_file = 6
-            dest_rank = 0 if game_state.is_white_move else 7
-            mock_piece = Piece(Piece_Type.KING, game_state.is_white_move,dest_rank,4)
-            legal_moves.append(Move(mock_piece,dest_rank,dest_file,Move_Type.CASTLE_KINGSIDE))
+            dest_rank = 0 if is_white else 7
+            mock_piece = Piece(Piece_Type.KING, is_white,dest_rank,4)
+            move = Move(mock_piece,dest_rank,dest_file,Move_Type.CASTLE_KINGSIDE)
+            if not self.does_move_put_player_in_check(move, game_state):
+                legal_moves.append(move)
 
-        if self.can_castle(game_state,game_state.is_white_move, False):
+        if self.can_castle(game_state,is_white, False):
             dest_file = 2
-            dest_rank = 0 if game_state.is_white_move else 7
-            mock_piece = Piece(Piece_Type.KING, game_state.is_white_move,dest_rank,4)
-            legal_moves.append(Move(mock_piece,dest_rank,dest_file,Move_Type.CASTLE_QUEENSIDE))
+            dest_rank = 0 if is_white else 7
+            mock_piece = Piece(Piece_Type.KING, is_white,dest_rank,4)
+            move = Move(mock_piece,dest_rank,dest_file,Move_Type.CASTLE_QUEENSIDE)
+            if not self.does_move_put_player_in_check(move,game_state):
+                legal_moves.append(move)
 
         return legal_moves
     
     def is_legal_move(self, move: Move, game_state: Game_State):
+        if move.dest_file == 5 and move.dest_rank == 6 and move.piece.piece_type == Piece_Type.KING:
+            print("fffff")
         if move.move_type == Move_Type.CASTLE_KINGSIDE:
             return self.can_castle(game_state,move.is_white,True)
         if move.move_type == Move_Type.CASTLE_QUEENSIDE:
             return self.can_castle(game_state,move.is_white,False)
         move_blocked = self.is_move_blocked(move,game_state)
         in_check = self.does_move_put_player_in_check(move,game_state)
-        in_check = False
         return not (move_blocked or in_check)
 
     def is_move_blocked(self,move: Move,game_state: Game_State):
@@ -54,6 +59,8 @@ class Evaluator:
         return True
 
     def does_move_put_player_in_check(self,move: Move,game_state: Game_State):
+        # if  move.piece.piece_type == Piece_Type.KING and move.cur_rank == 7:
+        #     print("gotcha!")
         spoof_state = game_state.execute_hypothetical(move)
         move.game_state = spoof_state
         if spoof_state.is_in_check(move.is_white):
@@ -117,23 +124,23 @@ class Evaluator:
         """
 
     lines = [[],[]]
-    def find_lines(self,line,game_state,depth):
+    def find_lines(self,line,game_state,depth,is_white):
         # This is assuming we are calculating for black. Can be made dynamic
-        game_state.is_white_move = False
-        legal_moves = self.find_legal_moves(game_state)
+        #game_state.is_white_move = False
+        legal_moves = self.find_legal_moves(game_state,is_white)
         for move in legal_moves:
             if move.get_notation() == "Ng-f6":
                 print("fff")
             spoof_state: Game_State = move.game_state
-            spoof_state.is_white_move = not game_state.is_white_move
+            #spoof_state.is_white_move = not game_state.is_white_move
             move.quality = self.rate_move_quality_heuristic(move,spoof_state)
             newline = [move]
-            responses = self.find_legal_moves(spoof_state)
+            responses = self.find_legal_moves(spoof_state, not is_white)
             best_response_q = -999999999999
             best_response = None
             for response in responses:
                 spoof_state2: Game_State = response.game_state
-                spoof_state.is_white_move = game_state.is_white_move
+                #spoof_state.is_white_move = game_state.is_white_move
 
                 response.quality = self.rate_move_quality_heuristic(response,spoof_state2)
                 newline2 = newline + [response]
@@ -146,12 +153,17 @@ class Evaluator:
         
         self.lines[depth] = sorted(self.lines[depth], key = lambda x: x[-1].quality)
         if depth == 0:
-            return self.lines
+            return
 
         candidates = self.lines[depth][0:5]
         for candidate in candidates:
-            return self.find_lines(candidate,candidate[-1].game_state,depth-1)
+            return self.find_lines(candidate,candidate[-1].game_state,depth-1,is_white)
         print("fff")
+
+    def find_top_moves(self, game_state, is_white):
+        self.lines = [[],[]]
+        self.find_lines([],game_state,1,is_white)
+        return self.lines
 
     def get_top_moves(self,game_state):
 
@@ -166,7 +178,7 @@ class Evaluator:
         for move in legal_moves:
             start_time = time.time()
             spoof_state: Game_State = game_state.execute_hypothetical(move)
-            spoof_state.is_white_move = not game_state.is_white_move
+            #spoof_state.is_white_move = not game_state.is_white_move
 
             end_time = time.time()
             elapsed_time = end_time - start_time
@@ -182,7 +194,7 @@ class Evaluator:
             opponent_moves = self.find_legal_moves(candidate[1])
             for opponent_move in opponent_moves:
                 spoof_state: Game_State = game_state.execute_hypothetical(opponent_move)
-                spoof_state.is_white_move = game_state.is_white_move
+                #spoof_state.is_white_move = game_state.is_white_move
                 opponent_move.quality = self.rate_move_quality_heuristic(opponent_move,spoof_state)
             opponent_moves = sorted(opponent_moves, key = lambda x: x.quality)
             best_opponent_move = opponent_moves[-1]
