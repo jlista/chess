@@ -1,0 +1,114 @@
+Easy way to switch between playing white and black
+implement pawn promotion
+refactor state and move objects so that we can see the move metadata during analysis
+show numbers and letters on the board
+switch to using real chess notation
+allow importing and exporting games/states
+analyze performance and see if we still have any bottlenecks
+some moves take too long to calculate or even crash... need a way to detect if it's looking at too many lines and re-prune
+pins can be accounted for in the function which says where a piece can move - detect if it's pinned and then it can't move
+likewise, king move logic needs to be changed so it can't move to controlled squares
+
+what happens if all choices on level 1 are resolved but one? Does it keep calculating?
+
+Heuristic needs to take into account whose move it is. If two pieces are threatening each other, it thinks
+the evaluation is equal but actually it depends on whose turn it is. If you are to play next you get the piece
+but if the opponent is to play next then they get the piece.
+
+Define a threat as a piece that sees an enemy piece which is either undefended, or worth more than the attacker
+
+Make a list of all threats
+for each threatened piece, figure out it if can escape or block (not sure how feasible it is to do a rigorous calc here, maybe some heuristic to estimate)
+assume I lose the most valuable threatened piece that cannot escape
+
+If it's not my turn:
+assume I lose the most valuable threatened piece
+
+
+
+if white is about to play:
+
+a. get all black pieces white is threatening, and the value of their attackers
+b. get all white pieces that black is threatening that CAN escape
+c. get all white pieces that black is threatening that CANNOT escape
+
+what does white gain?
+    if a and b are both null, white does nothing and gains nothing
+    if max(a) is more valuable than max(b), white captures and gains a
+    otherwise, white escapes and gains nothing.
+
+what does white lose?
+    if white did not capture and did not escape, white loses max(c)
+    if white captures, white loses max(attacker,b,c)
+    if white escapes, white loses max(b,c - escapee)
+
+
+
+
+
+Need to figure out why it likes to move the king rather than castling. Maybe it think it's good to use the king as defender?
+1. make sure we don't count the king as a defender if a piece is attacked
+2. make sure the calculation of possible moves for the rook and king includes castling, so we know those are valid threats/defenses
+
+
+Do we care about positional moves after a few iterations? Maybe we only care about the positional score for 2-3 moves
+and then only evaluate captures/checks
+
+
+Should we prune at level 1 after a certain number of iterations?
+Like, if we've already checked 4 moves and some level 1 choices look bad, can we just assume theyre bad?
+
+
+
+---------------------------------------
+ R'|    |    |  Q'|  K'|  B'|    |  R'|
+---------------------------------------
+ P'|  P'|  P'|    |  P'|  P'|  P'|    |
+---------------------------------------
+   |    |  N'|  P'|  B'|  N'|    |    |
+---------------------------------------
+   |    |    |    |    |    |  P |  P'|
+---------------------------------------
+   |    |    |    |    |    |    |  P |
+---------------------------------------
+   |    |    |    |    |  P |    |  R |
+---------------------------------------
+ P |  P |  P |  P |  P |    |    |    |
+---------------------------------------
+ R |  N |  B |  Q |  K |  B |  N |    |
+
+ This position has a hanging rook. Why didn't we take it?
+ moves = ["Ph-h4", "Ng-f6", "Pg-g4","Ph-h6", "Rh-h3", "Pd-d6", "Pf-f3", "Nb-c6", "Rh-h2", "Bc-e6", "Rh-h3", "Ph-h5", "Pg-g5"]
+
+
+
+Check sequences are a problem. For instance
+
+1. put in check
+2, get out of check - this is marked not interesting!
+
+need to find a way to mark escapes from check as interesting
+
+potential material losses seriously needs to factor in whose turn it is
+
+Why are repeated checks rated so good positionally? They shouldn't be since it encourages perpetual check
+
+maybe add a bonus for castling, like +10 or something because it tends to be reluctant to castle
+
+Defender logic needs a tweak - defending a valuable piece multiple times is overrated.
+If I have two defenders on a queen, that's not worth 18 - once the first capture occurs, if I recapture
+with a pawn, my other piece is only defending a pawn now
+
+critical squares might be overrated too - maybe don't count multiple attacks, just count how many
+critical squares we control.
+or better yet, for each critical square, figure out which side has more control over it.
++1 for having a piece in the square, +1 for each attacker, -1 for each enemy defender, then
+whichever side wins gets 1x4 =4 points and that's that. No bonus for overdefending these squares.
+
+I think it's okay to judiciously prune level 1 even after we've only calculated level 2
+
+Pawn promotion is broken - doesn't think it has the queen so it won't even consider the moves
+
+
+Profiler shows that the biggest timesinks are copying the state and finding potential moves/seers
+

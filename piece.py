@@ -9,39 +9,49 @@ class Piece_Type(enum.Enum):
     KING = 6
 
 class Piece:
+
+    label_map = {
+        Piece_Type.KNIGHT: "N",
+        Piece_Type.BISHOP: "B",
+        Piece_Type.ROOK: "R",
+        Piece_Type.QUEEN: "Q",
+        Piece_Type.KING: "K",
+        Piece_Type.PAWN: "P"
+    }
+
+    value_map = {
+        Piece_Type.KNIGHT: 3,
+        Piece_Type.BISHOP: 3,
+        Piece_Type.ROOK: 4,
+        Piece_Type.QUEEN: 9,
+        Piece_Type.KING: sys.maxsize,
+        Piece_Type.PAWN: 1
+    }
+
     piece_type = None
     value = sys.maxsize
     is_white = False
     loc_rank = 0
     loc_file = 0
     has_moved = False
+    has_just_moved_two_squares = False
     def __init__(self,piece_type,is_white,rank,file):
         self.piece_type = piece_type
         self.is_white = is_white
         self.loc_file = file
         self.loc_rank = rank
-        if piece_type == Piece_Type.PAWN:
-            self.value = 1
-        if piece_type in (Piece_Type.BISHOP, Piece_Type.KNIGHT):
-            self.value = 3
-        if piece_type == Piece_Type.ROOK:
-            self.value = 5
-        if piece_type == Piece_Type.QUEEN:
-            self.value = 8
+        self.value = self.value_map[piece_type]
+
+    def copy(self):
+        new_piece = Piece(self.piece_type,self.is_white,self.loc_rank,self.loc_file)
+        new_piece.has_moved = self.has_moved
+        new_piece.has_just_moved_two_squares = self.has_just_moved_two_squares
+        return new_piece
+
 
     def get_label(self):
-            label = "P"
-            if self.piece_type == Piece_Type.KNIGHT:
-                label = "N"
-            if self.piece_type == Piece_Type.BISHOP:
-                label = "B"
-            if self.piece_type == Piece_Type.ROOK:
-                label = "R"
-            if self.piece_type == Piece_Type.QUEEN:
-                label = "Q"
-            if self.piece_type == Piece_Type.KING:
-                label = "K"
-            return label
+        return self.label_map[self.piece_type]
+            
     
     def get_potential_moves(self,board):
         if self.piece_type != Piece_Type.PAWN:
@@ -62,6 +72,15 @@ class Piece:
                     occupant = board[diagonal[0]][diagonal[1]]
                     if occupant is not None:
                         seen_squares.append(diagonal)
+
+            for en_passant_target in [(self.loc_rank,self.loc_file+1),(self.loc_rank,self.loc_file-1)]:
+                diagonal = (self.loc_rank+dy,en_passant_target[1])
+                if diagonal[0] in range(8) and diagonal[1] in range(8):
+                    target_occupant = board[en_passant_target[0]][en_passant_target[1]]
+                    diagonal_occupant = board[diagonal[0]][diagonal[1]]
+                    if diagonal_occupant is None and target_occupant is not None and target_occupant.has_just_moved_two_squares:
+                        seen_squares.append(diagonal)
+
             return seen_squares
         
     def get_seen_squares(self,board):
@@ -90,6 +109,14 @@ class Piece:
         for diagonal in [(self.loc_rank+dy,self.loc_file-1), (self.loc_rank+dy,self.loc_file+1)]:
             if diagonal[0] in range(8) and diagonal[1] in range(8):
                 seen_squares.append(diagonal)
+
+        for en_passant_target in [(self.loc_rank,self.loc_file+1),(self.loc_rank,self.loc_file-1)]:
+            diagonal = (self.loc_rank+dy,en_passant_target[1])
+            if diagonal[0] in range(8) and diagonal[1] in range(8):
+                target_occupant = board[en_passant_target[0]][en_passant_target[1]]
+                diagonal_occupant = board[diagonal[0]][diagonal[1]]
+                if diagonal_occupant is None and target_occupant is not None and target_occupant.has_just_moved_two_squares:
+                    seen_squares.append(en_passant_target)
         #print(seen_squares)
         return seen_squares
 
@@ -153,7 +180,6 @@ class Piece:
                 rank += dirs[0]
                 file += dirs[1]
         return seen_squares
-    
     
     def get_seen_squares_king(self, board):
         seen_squares = []

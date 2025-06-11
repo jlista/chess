@@ -5,17 +5,54 @@ from game_state import Game_State
 from piece import Piece, Piece_Type
 from typing import List
 from utils import *
+
+class MoveNode:
+    state: Game_State
+    sequence = []
+    evaluation = 0
+    children = []
+    parent = None  
+    resolved = False
+    is_interesting = False
+    line_continuation = None
+    move = None
+
+    def __init__(self, state,sequence,evaluation,parent,move):
+        self.state = state
+        self.sequence = sequence
+        self.evaluation = evaluation
+        self.parent = parent
+        self.move = move
+
 class Evaluator:
 
     def find_legal_moves(self, game_state, is_white):
         legal_moves = []
         for piece in game_state.pieces:
             if piece.is_white == is_white:
-                candidates = piece.get_potential_moves(game_state.board)
+                candidates = game_state.potential_moves_from_square[piece.loc_rank][piece.loc_file]
                 for candidate in candidates:
-                    move = Move(piece,candidate[0],candidate[1])
-                    if self.is_legal_move(move,game_state):
-                        legal_moves.append(move)
+                    moves = []
+                    if piece.piece_type == Piece_Type.PAWN:
+                        if candidate[1] != piece.loc_file and game_state.board[candidate[0]][candidate[1]] is None:
+                            moves = [Move(piece,candidate[0],candidate[1],Move_Type.EN_PASSANT)]
+                        elif candidate[0] in [0,7]:
+                            promote_to_queen = Move(piece,candidate[0],candidate[1],Move_Type.PROMOTE_PAWN)
+                            promote_to_queen.promote_to = Piece_Type.QUEEN
+                            promote_to_rook = Move(piece,candidate[0],candidate[1],Move_Type.PROMOTE_PAWN)
+                            promote_to_rook.promote_to = Piece_Type.ROOK
+                            promote_to_bishop = Move(piece,candidate[0],candidate[1],Move_Type.PROMOTE_PAWN)
+                            promote_to_bishop.promote_to = Piece_Type.BISHOP
+                            promote_to_knight = Move(piece,candidate[0],candidate[1],Move_Type.PROMOTE_PAWN)
+                            promote_to_knight.promote_to = Piece_Type.KNIGHT
+                            moves = [promote_to_queen,promote_to_bishop,promote_to_rook,promote_to_knight]
+                        else:
+                            moves = [Move(piece,candidate[0],candidate[1])]
+                    else:
+                        moves = [Move(piece,candidate[0],candidate[1])]
+                    for move in moves:
+                        if self.is_legal_move(move,game_state):
+                            legal_moves.append(move)
 
         if self.can_castle(game_state,is_white, True):
             dest_file = 6
@@ -36,38 +73,38 @@ class Evaluator:
         return legal_moves
     
     def is_legal_move(self, move: Move, game_state: Game_State):
-        if move.dest_file == 5 and move.dest_rank == 6 and move.piece.piece_type == Piece_Type.KING:
-            print("fffff")
+        can_promote_pawn = move.piece.piece_type == Piece_Type.PAWN and move.dest_rank in (0,7)
+
         if move.move_type == Move_Type.CASTLE_KINGSIDE:
             return self.can_castle(game_state,move.is_white,True)
         if move.move_type == Move_Type.CASTLE_QUEENSIDE:
             return self.can_castle(game_state,move.is_white,False)
+        if move.move_type == Move_Type.PROMOTE_PAWN and not can_promote_pawn:
+            return False
+        if can_promote_pawn and move.move_type != Move_Type.PROMOTE_PAWN:
+            return False
         move_blocked = self.is_move_blocked(move,game_state)
-        in_check = self.does_move_put_player_in_check(move,game_state)
-        return not (move_blocked or in_check)
+        if not move_blocked:
+            in_check = self.does_move_put_player_in_check(move,game_state)
+            if not in_check:
+                return True
+        return False
 
     def is_move_blocked(self,move: Move,game_state: Game_State):
         
         occupant = game_state.board[move.dest_rank][move.dest_file]
-        if occupant is None or occupant.is_white != move.is_white:
-            # c_rank = candidate[0] + 1
-            # c_file = number_to_letter(candidate[1] + 1)
-            # label = piece.get_label()
-            #print(f"{label}{file} -> {c_file}{c_rank}")
+        if occupant is None or (occupant.is_white != move.is_white and occupant.piece_type != Piece_Type.KING):
             return False
-        
         return True
 
     def does_move_put_player_in_check(self,move: Move,game_state: Game_State):
-        # if  move.piece.piece_type == Piece_Type.KING and move.cur_rank == 7:
-        #     print("gotcha!")
         spoof_state = game_state.execute_hypothetical(move)
         move.game_state = spoof_state
-        if spoof_state.is_in_check(move.is_white):
+        if move.is_white and spoof_state.is_white_in_check:
+            return True
+        if not move.is_white and spoof_state.is_black_in_check:
             return True
         return False
-    
-
 
     def can_castle(self, game_state, is_white, is_kingside):
         rook_start,rook_dest,king_start,king_dest,gap = get_castling_coordinates(is_kingside, is_white)
@@ -105,52 +142,274 @@ class Evaluator:
         return rook_can_castle and king_can_castle and coast_is_clear
 
 
-        """
-        How to calculate a move:
+    move_tree = []
+    def find_next_move(self, game_state, is_white):
+        self.move_tree = [[MoveNode(game_state,[],0,None,None)]]
 
-        Find_lines (line, state, depth):
+        MAX_DEPTH = 4
 
-        possible_moves = get possible moves (state)
-        for move in possible moves:
-        responses = get_possible_responses
-        for response in responses:
-            evaluate position and assume opponent will play the best move for them.
-            lines.append(line, possible_move, strongest_opponent_response)
+        for level in range(MAX_DEPTH):
+            self.evaluate_move_tree(is_white,level)
+            viable_moves = [move for move in self.move_tree[1] if not move.resolved]
+            if len(viable_moves) == 1:
+                break
 
-        of the lines found, pick the few that are best for us and recurse.
 
+        lowest_rating = sys.maxsize
+        node_choice = None
+        for node in self.move_tree[1]:
+            if node.evaluation < lowest_rating:
+                lowest_rating = node.evaluation
+                node_choice = node
+        print("fff")
+        return game_state.move_from_notation(node_choice.sequence[0],False)
+
+    def mark_line_interesting(self,move):
+        move.is_interesting = True
+        if move.parent is not None:
+            self.mark_line_interesting(move.parent)
+    def resolve_branch(self,node):
+        node.resolved = True
+        for c in node.children:
+            self.resolve_branch(c)
+
+    def prune_uninteresting_moves(self, level, is_white):
+        # if level == 3:
+        #     print("ff")
+        # if level == 2:
+        #     print("ff")
+        # if level == 1:
+        #     print("ff")
+        # if level == 0:
+        #     print("ff")
+        # if level == 4:
+        #     print("ff")
+        MIN_PER_LEVEL = 300
+        MAX_PER_LEVEL = 400
+        nodes = self.move_tree[level]
+        num_nodes = len(nodes)
+        interesting_nodes = []
+
+        for node in nodes:
+
+            node.is_interesting = False
+            if abs(node.state.white_material - node.parent.state.white_material) > 1 or abs(node.state.black_material - node.parent.state.black_material) > 1:
+                node.is_interesting = True
+                self.mark_line_interesting(node)
+            if node.state.is_white_in_check or node.state.is_black_in_check:
+                node.is_interesting = True
+                self.mark_line_interesting(node)
+            if node.parent.state.is_white_in_check or node.parent.state.is_black_in_check: # forcing move/checkmate sequence 
+                node.is_interesting = True
+                self.mark_line_interesting(node)
+            if abs(node.state.white_potential_losses - node.parent.state.white_potential_losses) > 3 or abs(node.state.black_potential_losses - node.parent.state.black_potential_losses) > 3:
+                node.is_interesting = True
+                self.mark_line_interesting(node)
+            if node.is_interesting:
+                interesting_nodes.append(node)
+
+        num_marked_interesting = len(interesting_nodes)
+        if num_marked_interesting < MIN_PER_LEVEL:
+            print("did not exceed min interesting nodes, going to pad")
+            sorted_nodes = sorted(nodes,key = lambda x: x.evaluation - x.parent.evaluation, reverse = is_white)
+            i = 0
+            while num_marked_interesting < MIN_PER_LEVEL and i < len(sorted_nodes):
+                if not sorted_nodes[i].is_interesting:
+                    sorted_nodes[i].is_interesting = True
+                    self.mark_line_interesting(sorted_nodes[i]) 
+                    num_marked_interesting += 1
+                i=i+1 
+
+        # this might not be a good heuristic - maybe need a way to judge how interesting a move is and remove the less interesting ones regardless of rating
+        elif len(interesting_nodes) > MAX_PER_LEVEL:
+            print("exceeded max interesting nodes, going to pare down")
+            sorted_nodes = sorted(nodes,key = lambda x: x.evaluation - x.parent.evaluation, reverse = not is_white)
+            i=0
+            while num_marked_interesting > MAX_PER_LEVEL and i < len(sorted_nodes):
+                if sorted_nodes[i].is_interesting:
+                    sorted_nodes[i].is_interesting = False
+                    num_marked_interesting -= 1
+                i=i+1 
+
+        for node in nodes:
+            if not node.is_interesting:
+                self.resolve_branch(node)
+
+    def prune_bad_lines(self,level,is_white):
+        print(f"Pruning: length of tree {len(self.move_tree)}, level={level},# at max: {len(self.move_tree[-1])}")
+       
+        if level == -1: return
+        elif level == 0:
+            pruning_levels = (1,2,1)
+        elif level == 1:
+            pruning_levels = (2,0,-1)
+        else:
+            pruning_levels = (level+1,0,-1)
+        for pruning_level in range(*pruning_levels):
+
+            if pruning_level == 1:
+                threshold = 15
+            elif pruning_level < 3:
+                threshold = 15
+            else:
+                threshold = 15
+            num_pruned = 0
+            num_total = 0
+            num_bad_interesting = 0
+            print(f"pruning layer {pruning_level}")
+            parents = self.move_tree[pruning_level-1]
+            for parent in [p for p in parents if not p.resolved]:
+                
+                nodes = parent.children
+                nodes_sorted = sorted(nodes,key=lambda x: x.evaluation, reverse = is_white)
+                best_so_far = nodes_sorted[0]
+                #print(f"best: {best_so_far.evaluation} - {best_so_far.sequence}")
+                for node in nodes:
+                    if not node.resolved:
+                        num_total += 1
+                        if abs(best_so_far.evaluation - node.evaluation) > threshold:
+                            if not node.is_interesting:
+                                self.resolve_branch(node)
+                                num_pruned += 1
+                            elif pruning_level + 2 < len(self.move_tree):
+                                num_bad_interesting += 1
+                                self.resolve_branch(node)
+                                num_pruned += 1
+            print(f"Pruned {num_pruned} out of {num_total} on level {pruning_level}. {num_bad_interesting} were bad and interesting.")
+
+
+            is_white = not is_white
+
+
+
+    def back_propogate_evaluations(self,level, is_white):
+        # backprogapation to update evaluation of each possible move in the tree
+        for back_level in range(level,-1,-1):
+            for node in self.move_tree[back_level]:
+                if len(node.sequence) > 1 and node.sequence[1] == ['Qh-f7']:
+                    print("ggg")
+                if not node.resolved:
+                    sorted_children = sorted(node.children, key=lambda x: x.evaluation)
+
+                    if back_level % 2 == 1:
+                        # for each player move, update its evaluation to that of the best child opponent move
+                            if is_white: # if the player is white and we are looking at player moves, assume black will play the best (most negative) move
+                                node.evaluation = sorted_children[0].evaluation
+                                node.line_continuation = sorted_children[0]
+                            else: # if the player is black and we are looking at player moves, assume white will play the best (most positive) move
+                                node.evaluation = sorted_children[-1].evaluation
+                                node.line_continuation = sorted_children[-1]
+                    else:
+                    # for each opponent move, update its evaluation to that of the best child player move
+                        if is_white: # if the player is white and we are looking at opponent moves, assume white will play the best (most positive) move
+                            node.evaluation = sorted_children[-1].evaluation
+                            node.line_continuation = sorted_children[-1]
+                        else: # if the player is black and we are looking at opponent moves, assume black will play the best (most negative) move
+                            node.evaluation = sorted_children[0].evaluation
+                            node.line_continuation = sorted_children[0]
+                            
+
+    def evaluate_move_tree(self,is_white,level):
+        base_nodes = self.move_tree[level*2]
+
+        player_choices = []
+        opponent_choices = []
+
+        for node in base_nodes:
+            if not node.resolved:
+                child_nodes = []
+                possible_moves = self.find_legal_moves(node.state,is_white)
+                if len(possible_moves) == 0:
+                    node.resolved = True
+                    if is_white and node.state.is_white_in_check:
+                        node.evaluation = -1*sys.maxsize
+                    elif not is_white and node.state.is_black_in_check:
+                        node.evaluation = sys.maxsize
+                    else:
+                        node.evaluation = 0
+                for move in possible_moves:
+                    move.quality = self.rate_move_quality_heuristic(move,move.game_state)
+                    child_nodes.append(MoveNode(move.game_state, node.sequence + [move.get_notation()], move.quality, node, move))
+                node.children = child_nodes
+                player_choices.extend(child_nodes)
         
+        self.move_tree.append(player_choices)
+        self.back_propogate_evaluations(level*2,is_white)
+        self.prune_uninteresting_moves(level*2+1,is_white)
 
-        """
+        self.prune_bad_lines(level*2 - 1, not is_white)
+
+        for node in player_choices:
+            if not node.resolved:
+                child_nodes = []
+                possible_moves = self.find_legal_moves(node.state,not is_white)
+
+                if len(possible_moves) == 0:
+                    node.resolved = True
+                    if not is_white and node.state.is_white_in_check:
+                        node.evaluation = -1*sys.maxsize
+                    elif is_white and node.state.is_black_in_check:
+                        node.evaluation = sys.maxsize
+                    else:
+                        node.evaluation = 0
+                for move in possible_moves:
+                    move.quality = self.rate_move_quality_heuristic(move,move.game_state)
+                    child_nodes.append(MoveNode(move.game_state, node.sequence + [move.get_notation()], move.quality, node, move))
+
+                node.children = child_nodes
+                opponent_choices.extend(child_nodes)
+
+        self.move_tree.append(opponent_choices)
+        self.back_propogate_evaluations(level*2+1,is_white)
+
+        self.prune_uninteresting_moves(level*2+2,not is_white)
+        self.prune_bad_lines(level*2, is_white)
+        # prune bad or uninteresting moves
+
+
+
+        print("hi?")
+
+        # we need to prune at every level. For instance, if we're calculated 4 levels
+        # then at the bottom level, prune all but 10 moves. Then for each node on that level, prune all
+        # but 10 of its children, and so on. 
+
+        # moves_to_consider = sorted(self.move_tree[1], key=lambda x: x.evaluation)
+
+        # if is_white:
+        #     # if we are playing as white, the moves with low evaluations are bad
+        #     uninteresting_moves = moves_to_consider[0:-7]
+        #     # also consider some moves that look bad so we don't miss any crazy sacrifice tactics
+        #     uninteresting_moves = uninteresting_moves[3:]
+        # else:
+        #     uninteresting_moves = moves_to_consider[7:]
+        #     uninteresting_moves = uninteresting_moves[0:-3]
+        # # TODO: moves that involves checks or captures are also interesting
+        # for move in uninteresting_moves:
+        #     prune_branch(move)
 
     lines = [[],[]]
     def find_lines(self,line,game_state,depth,is_white):
         # This is assuming we are calculating for black. Can be made dynamic
-        #game_state.is_white_move = False
         legal_moves = self.find_legal_moves(game_state,is_white)
         for move in legal_moves:
-            if move.get_notation() == "Ng-f6":
-                print("fff")
             spoof_state: Game_State = move.game_state
-            #spoof_state.is_white_move = not game_state.is_white_move
             move.quality = self.rate_move_quality_heuristic(move,spoof_state)
+            
+            #print(f"{move.get_notation()} - {move.quality} - {move.metadata}")
             newline = [move]
             responses = self.find_legal_moves(spoof_state, not is_white)
             best_response_q = -999999999999
             best_response = None
             for response in responses:
                 spoof_state2: Game_State = response.game_state
-                #spoof_state.is_white_move = game_state.is_white_move
-
                 response.quality = self.rate_move_quality_heuristic(response,spoof_state2)
-                newline2 = newline + [response]
-                #print(newline2)
                 if response.quality > best_response_q:
                     best_response_q = response.quality
                     best_response = response
             self.lines[depth].append(line + newline + [best_response])
-            print(f"the best response to {move.get_notation()} - {move.quality} is {best_response.get_notation()} - {best_response_q}")
-        
+            #print(f"the best response to {move.get_notation()} - {move.quality} is {best_response.get_notation()} - {best_response_q}")
+            #print(best_response.metadata)
         self.lines[depth] = sorted(self.lines[depth], key = lambda x: x[-1].quality)
         if depth == 0:
             return
@@ -158,301 +417,177 @@ class Evaluator:
         candidates = self.lines[depth][0:5]
         for candidate in candidates:
             return self.find_lines(candidate,candidate[-1].game_state,depth-1,is_white)
-        print("fff")
 
     def find_top_moves(self, game_state, is_white):
         self.lines = [[],[]]
         self.find_lines([],game_state,1,is_white)
         return self.lines
 
-    def get_top_moves(self,game_state):
-
-        candidates = []
-        print("FINDING LEGAL MOVES")
-        start_time = time.time()
-        legal_moves = self.find_legal_moves(game_state)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-
-        #print(f"Elapsed time legal moves: {elapsed_time} seconds")
-        for move in legal_moves:
-            start_time = time.time()
-            spoof_state: Game_State = game_state.execute_hypothetical(move)
-            #spoof_state.is_white_move = not game_state.is_white_move
-
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-
-            #print(f"Elapsed time for spoof state: {elapsed_time} seconds")
-            move.quality = self.rate_move_quality_heuristic(move,spoof_state)
-            candidates.append((move,spoof_state))
-
-        best_candidates = sorted(candidates,key=lambda x: x[0].quality)
-        worst_outcome_for_opponent = 99999999
-        move_choice = None
-        for candidate in best_candidates:
-            opponent_moves = self.find_legal_moves(candidate[1])
-            for opponent_move in opponent_moves:
-                spoof_state: Game_State = game_state.execute_hypothetical(opponent_move)
-                #spoof_state.is_white_move = game_state.is_white_move
-                opponent_move.quality = self.rate_move_quality_heuristic(opponent_move,spoof_state)
-            opponent_moves = sorted(opponent_moves, key = lambda x: x.quality)
-            best_opponent_move = opponent_moves[-1]
-            if best_opponent_move.quality < worst_outcome_for_opponent:
-                worst_outcome_for_opponent = best_opponent_move.quality
-                move_choice = candidate
-
-
-        # passes_round_2 = False
-        # candidate_index = -1
-        # while not passes_round_2 and candidate_index >= -1*len(legal_moves):
-        #     candidate = legal_moves[candidate_index]
-        #     spoof_state = game_state.execute_hypothetical(candidate)
-        #     spoof_state.is_white_move = not game_state.is_white_move
-        #     can_opponent_check = False
-        #     opponent_moves = self.find_legal_moves(spoof_state)
-        #     for opponent_move in opponent_moves:
-        #         metaspoof = spoof_state.execute_hypothetical(opponent_move)
-        #         if metaspoof.is_in_dangerous_check(game_state.is_white_move):
-        #             can_opponent_check = True
-        #             break
-        #     if not can_opponent_check:
-        #         passes_round_2 = True      
-        #     else: 
-        #         candidate.quality -= 50000
-        #         candidate_index -= 1
-
-
-        return [move_choice[0]]
     
     def rate_move_quality_heuristic(self,move,spoof_state: Game_State):
         
-        start_time = time.time()
-        quality = 0
+        if move.get_notation() == "Nf-e6":
+            print("gotcha")
+        ## TODO
+        """
+        Positions must be evaluated based on whose turn it is. If you have a hanging piece but it's your turn,
+        this is not bad since you can just move it. But if it's the opponent's turn then you have a problem. 
+        """
 
-        white_pieces = [p for p in spoof_state.pieces if p.is_white]
-        black_pieces = [p for p in spoof_state.pieces if not p.is_white]
-        white_king = [p for p in white_pieces if p.piece_type == Piece_Type.KING][0]
-        black_king = [p for p in black_pieces if p.piece_type == Piece_Type.KING][0]
+        start_time = time.time()
+
+        white_pieces = spoof_state.white_pieces
+        black_pieces = spoof_state.black_pieces
+        white_king = spoof_state.white_king
+        black_king = spoof_state.black_king
 
         # Count material
-        white_material = sum([p.value for p in white_pieces if p.piece_type != Piece_Type.KING])
-        black_material = sum([p.value for p in black_pieces if p.piece_type != Piece_Type.KING])
+        white_material = spoof_state.white_material
+        black_material = spoof_state.black_material
 
-        # Count seen squares
-        white_squares_seen = []
-        for sqset in [p.get_seen_squares(spoof_state.board) for p in white_pieces]:
-            white_squares_seen += sqset
-        black_squares_seen = []
-        for sqset in [p.get_seen_squares(spoof_state.board) for p in black_pieces]:
-            black_squares_seen += sqset
+        white_attackers_by_square = [[[] for r in range(8)] for f in range(8)]
+        black_attackers_by_square = [[[] for r in range(8)] for f in range(8)]
+        for p in white_pieces:
+            for sq in spoof_state.seen_by_square[p.loc_rank][p.loc_file]:
+                white_attackers_by_square[sq[0]][sq[1]].append(p)
+        for p in black_pieces:
+            for sq in spoof_state.seen_by_square[p.loc_rank][p.loc_file]:
+                black_attackers_by_square[sq[0]][sq[1]].append(p)
+
+        # this is still broken because when calculating for white, we haven't yet removed the black kings so it will think it can attack those squares if two kings are facing
+        for rank in range(8):
+            for file in range(8):
+                for white_attacker in white_attackers_by_square[rank][file]:
+                    if white_attacker.piece_type == Piece_Type.KING and len(black_attackers_by_square[rank][file]) > 0:
+                        white_attackers_by_square[rank][file].remove(white_attacker)
+                for black_attacker in black_attackers_by_square[rank][file]:
+                    if black_attacker.piece_type == Piece_Type.KING and len(white_attackers_by_square[rank][file]) > 0:
+                        black_attackers_by_square[rank][file].remove(black_attacker)
+
+        black_squares_seen = 0
+        white_squares_seen = 0
+
+        for rank in range(8):
+            for file in range(8):
+                if len(white_attackers_by_square[rank][file]) > 0:
+                    white_squares_seen += 1
+                if len(black_attackers_by_square[rank][file]) > 0:
+                    white_squares_seen += 1
 
         # Count seen critical squares
         central_squares = [(3,3),(3,4),(4,3),(4,4)]
-        white_king_adjacent_squares = white_king.get_seen_squares(spoof_state.board)
-        black_king_adjacent_squares = black_king.get_seen_squares(spoof_state.board)
+        white_king_adjacent_squares = spoof_state.seen_by_square[white_king.loc_rank][white_king.loc_file]
+        black_king_adjacent_squares = spoof_state.seen_by_square[black_king.loc_rank][black_king.loc_file]
         white_critical_squares = central_squares + black_king_adjacent_squares
         black_critical_squares = central_squares + white_king_adjacent_squares
 
-        white_seen_critical_squares = len([s for s in white_squares_seen if s in white_critical_squares])
-        black_seen_critical_squares = len([s for s in black_squares_seen if s in black_critical_squares])
-        white_squares_seen = len(white_squares_seen)
-        black_squares_seen = len(black_squares_seen)
+        white_seen_critical_squares = 0
+        black_seen_critical_squares = 0
+
+        for cr_rank,cr_file in white_critical_squares:
+            if len(white_attackers_by_square[cr_rank][cr_file]) > 0:
+                white_seen_critical_squares += 1
+    
+        for cr_rank,cr_file in black_critical_squares:
+            if len(black_attackers_by_square[cr_rank][cr_file]) > 0:
+                black_seen_critical_squares += 1
 
         # # Count developed pieces
         # current_developed_pieces = sum([1 for p in current_pieces if p.has_moved])
         # opponent_developed_pieces = sum([1 for p in opponent_pieces if p.has_moved])
 
         # Count defenders
-        white_defenders = sum([len(spoof_state.get_defenders(p.loc_rank,p.loc_file,True)) for p in white_pieces])
-        black_defenders = sum([len(spoof_state.get_defenders(p.loc_rank,p.loc_file,False)) for p in black_pieces])
+        white_defenders = sum([len(white_attackers_by_square[p.loc_rank][p.loc_file]) for p in white_pieces])
+        black_defenders = sum([len(black_attackers_by_square[p.loc_rank][p.loc_file]) for p in black_pieces])
 
         # Count attackers
-        white_attackers = sum([len(spoof_state.get_attackers(p.loc_rank,p.loc_file,False)) for p in black_pieces])
-        black_attackers = sum([len(spoof_state.get_attackers(p.loc_rank,p.loc_file,True)) for p in white_pieces])
+        white_attackers = sum([len(white_attackers_by_square[p.loc_rank][p.loc_file]) for p in black_pieces])
+        black_attackers = sum([len(black_attackers_by_square[p.loc_rank][p.loc_file]) for p in white_pieces])
+
+
+        # Count potential material losses
+
+        white_potential_losses = 0
+        white_escapable_pieces = [] # currently only checks if it can move to a safe square. Also need to look for blocks
+        white_trapped_pieces = []
+        for p in [p for p in white_pieces if p.piece_type is not Piece_Type.KING]:
+            loss = 0
+            piece_attackers = black_attackers_by_square[p.loc_rank][p.loc_file]
+            if len(piece_attackers) > 0:
+
+
+                # This is WRONG because get_potential_moves counts occupied squares, even if it's occupied by your own pieces
+                safe_squares = [sq for sq in spoof_state.potential_moves_from_square[p.loc_rank][p.loc_file] if len(black_attackers_by_square[sq[0]][sq[1]]) == 0]
+
+                piece_defenders = white_attackers_by_square[p.loc_rank][p.loc_file]
+                weakest_attacker = sorted(piece_attackers, key=lambda x: x.value)[0]
+                if len(piece_defenders) == 0: # need to add logic to see if using defender would be legal (pin or defender is king)
+                    loss = p.value
+                elif weakest_attacker.value < p.value:
+                    loss = p.value - weakest_attacker.value
+                    
+                if not move.piece.is_white and len(safe_squares) > 0:
+                    white_escapable_pieces.append((p, loss))
+                else:
+                    white_trapped_pieces.append((p,loss))
+
+        if len(white_trapped_pieces) > 0:
+            white_worst_loss_trapped = max([p[1] for p in white_trapped_pieces])
+            if len(white_escapable_pieces) < 2:
+                white_potential_losses = white_worst_loss_trapped
+            else:
+                white_escapable_pieces = sorted(white_escapable_pieces, key=lambda x: x[1])
+                white_potential_losses = max(white_worst_loss_trapped, white_escapable_pieces[-2][1])
+
+        black_potential_losses = 0
+        black_escapable_pieces = []
+        black_trapped_pieces = []
+        for p in [p for p in black_pieces if p.piece_type is not Piece_Type.KING]:
+            loss = 0
+            piece_attackers = white_attackers_by_square[p.loc_rank][p.loc_file]
+            if len(piece_attackers) > 0:
+
+                safe_squares = [sq for sq in spoof_state.potential_moves_from_square[p.loc_rank][p.loc_file] if len(white_attackers_by_square[sq[0]][sq[1]]) == 0]
+
+                piece_defenders = black_attackers_by_square[p.loc_rank][p.loc_file]
+                weakest_attacker = sorted(piece_attackers, key=lambda x: x.value)[0]
+                if len(piece_defenders) == 0: # need to add logic to see if using defender would be legal (pin or defender is king)
+                    loss = p.value
+                elif weakest_attacker.value < p.value:
+                    loss = p.value - weakest_attacker.value
+                    
+                if move.piece.is_white and len(safe_squares) > 0:
+                    black_escapable_pieces.append((p, loss))
+                else:
+                    black_trapped_pieces.append((p,loss))
+
+        if black_trapped_pieces:
+            black_worst_loss_trapped = max([p[1] for p in black_trapped_pieces])
+            if len(black_escapable_pieces) < 2:
+                black_potential_losses = black_worst_loss_trapped
+            else:
+                black_escapable_pieces = sorted(black_escapable_pieces, key=lambda x: x[1])
+                black_potential_losses = max(black_worst_loss_trapped, black_escapable_pieces[-1][1])
+        spoof_state.white_potential_losses = white_potential_losses
+        spoof_state.black_potential_losses = black_potential_losses
+
+        # TODO - move potential losses calculation to the state
 
         material_score = 20 * (white_material - black_material)
         move.metadata += f"Material: {material_score} "
+        loss_score = 20 * (black_potential_losses - white_potential_losses)
+        move.metadata += f"Potential loss: {loss_score}"
         seen_score = white_squares_seen - black_squares_seen
         move.metadata += f"Seen: {seen_score} "
         critical_seen_score = 4 * (white_seen_critical_squares - black_seen_critical_squares)
         move.metadata += f"Critical: {critical_seen_score} "
-        defender_score = 3 * (white_defenders - black_defenders)
+        defender_score = 1 * (white_defenders - black_defenders)
         move.metadata += f"Defenders: {defender_score} "
-        attacker_score = 3 * (white_attackers - black_attackers)
+        attacker_score = 1 * (white_attackers - black_attackers)
         move.metadata += f"Attackers: {attacker_score} "
 
-        quality = material_score + seen_score + critical_seen_score + defender_score + attacker_score
+        quality = material_score + loss_score + seen_score + critical_seen_score + defender_score + attacker_score
         
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        #print(f"Elapsed time: {elapsed_time} seconds")
 
         return quality
 
-        #print(f"Move: {candidate.get_notation()}, q = {candidate.quality}")
-    def rate_move_quality_backup(self,move, game_state):
-        capturing = False
-        likely_to_be_captured = False
-        spoof_state = game_state.execute_hypothetical(move)
-        quality = 0
-        # heuristic 1: does the move put the opponent in checkmate?
-        # simulate possible moves for opponent
-        spoof_state.is_white_move = not game_state.is_white_move
-
-    
-        # heuristic 4: if I capture here, how many material do i win?
-        # 4.1 if I move here, what is the worst capture the opponent can do on any square?
-
-
-        material_gain = 0
-        occupant = game_state.board[move.dest_rank][move.dest_file]
-
-        if occupant is not None:
-            material_gain = occupant.value
-            capturing = True
-
-        largest_hypothetical_loss = 0
-        largest_piece_to_lose = None
-        for piece in spoof_state.pieces:
-            if piece.is_white == move.is_white:
-                hypothetical_loss = 0
-                enemy_attackers = sorted(spoof_state.get_attackers(piece.loc_rank,piece.loc_file,move.is_white), key = lambda x: x.value)
-                defenders = sorted(spoof_state.get_defenders(piece.loc_rank,piece.loc_file,move.is_white), key = lambda x: x.value)
-                if len(enemy_attackers) > 0:
-                    weakest_attacker = enemy_attackers[0]
-                    if len(defenders) == 0 or weakest_attacker.value <= piece.value:
-                        hypothetical_loss = piece.value
-                        largest_piece_to_lose = piece
-                if hypothetical_loss > largest_hypothetical_loss:
-                    largest_hypothetical_loss = hypothetical_loss
-        material_gain -= largest_hypothetical_loss
-
-        if largest_hypothetical_loss > 0 and largest_piece_to_lose.piece_type == move.piece.piece_type:
-            likely_to_be_captured = True
-           
-
-        quality += 10000*material_gain
-        move.metadata += f"Material: {material_gain} "
-
-        if spoof_state.is_in_dangerous_check(not move.is_white):
-            quality += 10000 
-            move.metadata += f"Dangerous check detected. "
-            if len(self.find_legal_moves(spoof_state)) == 0:
-                move.metadata += f"Checkmate detected. "
-                quality = sys.maxsize
-
-        # how much material am I attacking?
-
-        attacked_material_before = 0
-        for piece in game_state.pieces:
-            if piece.is_white != move.is_white and piece.piece_type != Piece_Type.KING:
-                attackers = game_state.get_attackers(piece.loc_rank,piece.loc_file,not move.is_white)
-                if len(attackers) > 0:
-                    attacked_material_before += piece.value
-
-        attacked_material = 0
-        for piece in spoof_state.pieces:
-            if piece.is_white != move.is_white and piece.piece_type != Piece_Type.KING:
-                attackers = spoof_state.get_attackers(piece.loc_rank,piece.loc_file,not move.is_white)
-                if len(attackers) > 0:
-                    attacked_material += piece.value
-
-        attacked_material_delta = attacked_material - attacked_material_before
-        if not likely_to_be_captured:
-            quality += 150 * attacked_material_delta
-            move.metadata += f"Attacking material: {attacked_material_delta} "
-
-        # prefer to capture with pieces rather than pawns
-        if capturing:
-            if move.piece.piece_type == Piece_Type.PAWN:
-                quality -= 200
-                move.metadata += f"Capturing w/pawn discouraged. "
-
-
-        # is there an improvement in how many squares the piece will see?
-        # this mainly matters in the endgame - use number of pieces on the board as a proxy
-        CUTOFF = 17
-        if len([p for p in spoof_state.pieces if p.is_white != move.is_white]) < CUTOFF:
-
-            total_squares_seen_before = 0
-            for piece in game_state.pieces:
-                if piece.is_white == move.is_white:
-                    total_squares_seen_before += len(piece.get_seen_squares(game_state.board))
-        
-
-            total_squares_seen_after = 0
-            for piece in spoof_state.pieces:
-                if piece.is_white == move.is_white:
-                    total_squares_seen_after += len(piece.get_seen_squares(spoof_state.board))
-                 
-            improvement = total_squares_seen_after - total_squares_seen_before
-            if not likely_to_be_captured:
-                quality += 50 * improvement
-                move.metadata += f"Improvement in seen squares: {improvement} "
-
-        if not move.piece.has_moved: 
-            quality += 150
-            move.metadata += "Moving new piece. "
-        if move.move_type == Move_Type.CASTLE_KINGSIDE or move.move_type == Move_Type.CASTLE_QUEENSIDE:
-            move.metadata += "Castling is good. "
-            quality += 500
-
-        # try to attack squares that the enemy king sees
-        king_confiners_before = 0
-        king_confiners_after = 0
-        for piece in spoof_state.pieces:
-            if piece.piece_type == Piece_Type.KING and piece.is_white != move.is_white:
-                for s in piece.get_seen_squares(spoof_state.board):
-                    if spoof_state.get_attackers(s[0],s[1],not move.is_white):
-                        king_confiners_after += 1
-
-        for piece in game_state.pieces:
-            if piece.piece_type == Piece_Type.KING and piece.is_white != move.is_white:
-             for s in piece.get_seen_squares(game_state.board):
-                    if game_state.get_attackers(s[0],s[1],not move.is_white):
-                        king_confiners_before += 1
-
-        if (king_confiners_after - king_confiners_before) != 0 and not likely_to_be_captured:
-            quality += 500 * (king_confiners_after - king_confiners_before)
-            move.metadata += f"{(king_confiners_after - king_confiners_before)} more squares attacked around king. "        
-
-
-
-        rank_ctr_dist = abs(move.dest_rank - 3.5)
-        file_ctr_dist = abs(move.dest_file - 3.5)
-        if move.piece.piece_type != Piece_Type.KING:
-            quality += (35 - rank_ctr_dist - file_ctr_dist)
-
-        return quality
-    
-        # problem - doesn't seem to recognize you can protect a piece with a pawn 
-        # --- can't reproduce
-
-        # problem - attacking lots of material seems to sway it too much, maybe focus on change in # of material attacked
-        # --- Implemented, not tested
-
-        # problem - should prefer capturing with pieces rather than pawns (maybe don't do this for all moves otherwise it will always openw ith knights)
-        # --- Implemented, not tested
-
-        # problem - if I put opponent in check, we shouldn't count any potential material loss other than moves that get them out of check
-        # --- this is complicated, come back to it
-        
-        # problem - seen squares should look at ALL the squares my pieces see
-        # --- Implemented, not tested
-        
-        # problem - attacker and defender logic to calculate material loss - needs to go through all captures
-        # --- this is complicated, come back to it
-
-        # problem - piece promotions should be calculated in terms of material gain/loss
-        # problem - when a queen got promoted, capturing it was still evaluated to the same material gain of capturing a pawn
-
-        # problem - stuff like squares seen, check, or attacking squares around the king doesn't matter if you're
-        # about to lose the piece. It tends to do reckless sacrifices for this reason
-
-        # Dangerous Check evaluation may be broken - it called a check dangerous when the piece could be captured.
-
-        # "likely to be captures" could also use improvement. I 
-
-        # in checking for attackers/defenders, the king should not count as a defender if doing so would put it in check
-        # actually this might already be in place, need to look into it

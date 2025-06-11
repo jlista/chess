@@ -7,25 +7,37 @@ import time
 class Game_State:
     pieces = []
     board = []
-    seers = []
-    potential_moves = []
-    past_states = []
-    #is_white_move = True
-
-    has_white_castled = False
-    has_black_castled = False
+    seers_of_square = []
+    seen_by_square = []
+    potential_moves_to_square = []
+    potential_moves_from_square = []
+    white_pieces = []
+    black_pieces = []
+    white_king = None
+    black_king = None
+    white_material = 0
+    black_material = 0
+    white_potential_losses = 0
+    black_potential_losses = 0
+    is_white_in_check = False
+    is_black_in_check = False
 
     def __init__(self):
         self.board = [[None for i in range(8)] for j in range(8)]
-        self.seers = [[[] for i in range(8)] for j in range(8)]
-        self.potential_moves = [[[] for i in range(8)] for j in range(8)]
+        self.seers_of_square = [[[] for i in range(8)] for j in range(8)]
+        self.seen_by_square = [[[] for i in range(8)] for j in range(8)]
+        self.potential_moves_to_square = [[[] for i in range(8)] for j in range(8)]
+        self.potential_moves_from_square = [[[] for i in range(8)] for j in range(8)]
         self.pieces = []
+
 
     def make_copy(self):
         new_state = Game_State()
-        new_state.pieces = copy.deepcopy(self.pieces)
-        for piece in new_state.pieces:
-            new_state.board[piece.loc_rank][piece.loc_file] = piece
+        for piece in self.pieces:
+            new_piece = piece.copy()
+            new_state.board[piece.loc_rank][piece.loc_file] = new_piece
+            new_state.pieces.append(new_piece)
+
         new_state.past_state = self.board
         return new_state
 
@@ -34,7 +46,6 @@ class Game_State:
         
             self.pieces.append(Piece(Piece_Type.PAWN,True,1,i))
             self.pieces.append(Piece(Piece_Type.PAWN,False,6,i))
-
 
         self.pieces.append(Piece(Piece_Type.KNIGHT, True,0,1))
         self.pieces.append(Piece(Piece_Type.KNIGHT, True,0,6))
@@ -59,65 +70,33 @@ class Game_State:
 
         self.pieces.append(Piece(Piece_Type.QUEEN, False,7,3))
         self.pieces.append(Piece(Piece_Type.KING, False,7,4))
+
         for piece in self.pieces:
             self.board[piece.loc_rank][piece.loc_file] = piece
 
+        self.calculate_seers()
+        self.calculate_potential_moves()
+        self.calculate_material()
+
     def calculate_seers(self):
-        start_time=time.time()  
-      
+        self.seers_of_square = [[[] for i in range(8)] for j in range(8)]
         for seeing_piece in self.pieces:
             seen_squares = seeing_piece.get_seen_squares(self.board)
+            self.seen_by_square[seeing_piece.loc_rank][seeing_piece.loc_file] = seen_squares
             for (rank,file) in seen_squares:
-                self.seers[rank][file].append(seeing_piece)
-                
-        end_time = time.time()
-        elapsed_time = end_time - start_time
+                self.seers_of_square[rank][file].append(seeing_piece)
 
-        #print(f"Elapsed time for find_seers: {elapsed_time} seconds")
-
-
-    def find_seers(self,rank,file):
-        start_time=time.time()
-        seers = []
-        for seeing_piece in self.pieces:
-            seen_squares = seeing_piece.get_seen_squares(self.board)
-            if (rank,file) in seen_squares:
-                seers.append(seeing_piece)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-
-        #print(f"Elapsed time for find_seers: {elapsed_time} seconds")
-        return seers
-    
     def calculate_potential_moves(self):
-        start_time=time.time()  
-      
+        self.potential_moves_to_square = [[[] for i in range(8)] for j in range(8)]
         for seeing_piece in self.pieces:
             seen_squares = seeing_piece.get_potential_moves(self.board)
+            self.potential_moves_from_square[seeing_piece.loc_rank][seeing_piece.loc_file] = seen_squares
             for (rank,file) in seen_squares:
-                self.potential_moves[rank][file].append(seeing_piece)
-                
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-
-        #print(f"Elapsed time for  find_pm: {elapsed_time} seconds")
-    
-    def find_potential_moves(self,rank,file):
-        start_time = time.time()
-        seers = []
-        for seeing_piece in self.pieces:
-            seen_squares = seeing_piece.get_potential_moves(self.board)
-            if (rank,file) in seen_squares:
-                seers.append(seeing_piece)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-
-        #print(f"Elapsed time for find_potential_moves: {elapsed_time} seconds")
-        return seers
+                self.potential_moves_to_square[rank][file].append(seeing_piece)
 
     def get_attackers(self,rank,file,is_white):
         attackers = []
-        seers = self.seers[rank][file]
+        seers = self.seers_of_square[rank][file]
         for seer in seers:
             if seer.is_white != is_white:
                 attackers.append(seer)
@@ -125,7 +104,7 @@ class Game_State:
 
     def get_defenders(self,rank,file,is_white):
         defenders = []
-        seers = self.seers[rank][file]
+        seers = self.seers_of_square[rank][file]
         for seer in seers:
             if seer.is_white == is_white:
                 defenders.append(seer)
@@ -133,11 +112,10 @@ class Game_State:
     
     def is_in_check(self,is_white):
         in_check = False
-        for piece in self.pieces:
-            if piece.piece_type == Piece_Type.KING and piece.is_white == is_white:
-                attackers = self.get_attackers(piece.loc_rank, piece.loc_file, is_white)
-                if len(attackers) > 0:
-                    in_check = True
+        king = self.white_king if is_white else self.black_king
+        attackers = self.get_attackers(king.loc_rank, king.loc_file, is_white)
+        if len(attackers) > 0:
+            in_check = True
         return in_check
     
     def is_in_dangerous_check(self,is_white):
@@ -165,8 +143,6 @@ class Game_State:
             # otherwise, calculate whether losing the defender it worth it
             return True
 
-            
-        
 
     def move_from_notation(self,notation, is_white):
 
@@ -194,36 +170,57 @@ class Game_State:
 
         else:
             spl = notation.split("-")
-            source = spl[0]
-            dest = spl[1]
-            label = source[0]
+            first_part = spl[0]
+            second_part = spl[1].split("=")
+            promotion_type = None
+            if len(second_part) == 2:
+                promotion_type = second_part[1]
+            dest = second_part[0]
+            label = first_part[0]
             piece_type = label_map[label]
-            src_file = letter_to_number(source[1])
+            src_file = letter_to_number(first_part[1])
             dest_file = letter_to_number(dest[0])
             dest_rank = int(dest[1]) - 1
 
             piece_to_move = None
-            for piece in self.find_potential_moves(dest_rank,dest_file):
+            for piece in self.potential_moves_to_square[dest_rank][dest_file]:
                 if piece.is_white == is_white and piece.piece_type == piece_type:
                     if piece.loc_file == src_file:
                         piece_to_move = piece
-            if piece_to_move is not None:
-     
-                move = Move(piece_to_move,dest_rank,dest_file,Move_Type.STANDARD)
 
+            if piece_to_move is not None:
+
+                if promotion_type is not None:
+                    move = Move(piece_to_move,dest_rank,dest_file,Move_Type.PROMOTE_PAWN)
+                    move.promote_to = label_map[promotion_type]
+                elif piece_to_move.piece_type == Piece_Type.PAWN and dest_file != src_file and self.board[dest_rank][dest_file] is None:
+                     move = Move(piece_to_move,dest_rank,dest_file,Move_Type.EN_PASSANT)
+                else:
+                    move = Move(piece_to_move,dest_rank,dest_file,Move_Type.STANDARD)
         return move
 
-
-
-
     def execute(self,move: Move):
+        # make sure that pawns can't be captured en passant unless they moved 2 spaces on this turn
+        for piece in self.pieces:
+            piece.has_just_moved_two_squares = False
+        if move.piece.piece_type == Piece_Type.PAWN and abs(move.dest_rank - move.cur_rank) == 2:
+            move.piece.has_just_moved_two_squares = True
+        
+
         notation = ""
         if move.move_type == Move_Type.STANDARD:
-
             self.move_piece(move.piece,move.dest_rank,move.dest_file)
 
+        if move.move_type == Move_Type.PROMOTE_PAWN:
+            move.piece.piece_type = move.promote_to
+            move.piece.value = move.piece.value_map[move.promote_to]
+            self.move_piece(move.piece,move.dest_rank,move.dest_file)
+
+        elif move.move_type == Move_Type.EN_PASSANT:
+            self.move_piece(move.piece,move.dest_rank,move.dest_file,en_passant_capture=True)
+
         elif move.move_type == Move_Type.CASTLE_KINGSIDE:
-            rook_start,rook_dest,king_start,king_dest,gap = get_castling_coordinates(True,move.is_white)
+            rook_start,rook_dest,king_start,king_dest,gzap = get_castling_coordinates(True,move.is_white)
             king = self.board[king_start[0]][king_start[1]]
             rook = self.board[rook_start[0]][rook_start[1]]
             self.move_piece(king,king_dest[0],king_dest[1])
@@ -239,51 +236,45 @@ class Game_State:
         return notation
     def execute_hypothetical(self,move):
 
-        start_time = time.time()
         hypothetical_state = self.make_copy()
         hypothetical_move = copy.deepcopy(move)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-
-        #print(f"Elapsed time copying spoof state: {elapsed_time} seconds")
         for sp in hypothetical_state.pieces:
             if sp.loc_rank == move.piece.loc_rank and sp.loc_file == move.piece.loc_file:
                 hypothetical_move.piece = sp
         start_time = time.time()
         hypothetical_state.execute(hypothetical_move)
-
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-
-        #print(f"Elapsed time executing hypothetical move: {elapsed_time} seconds")
         return hypothetical_state
     
-    def move_piece(self,piece,rank,file):
+    def move_piece(self,piece,rank,file,en_passant_capture = False):
         prev_rank = piece.loc_rank
         prev_file = piece.loc_file
-        occupant = self.board[rank][file]
-        if occupant is not None:
-            self.pieces.remove(occupant)
+        if en_passant_capture:
+            occupant = self.board[prev_rank][file]
+            if occupant is not None:
+                self.pieces.remove(occupant)
+                self.board[prev_rank][file] = None
+        else:
+            occupant = self.board[rank][file]
+            if occupant is not None:
+                self.pieces.remove(occupant)
         piece.loc_rank = rank
         piece.loc_file = file
         piece.has_moved = True
         self.board[prev_rank][prev_file] = None
         self.board[rank][file] = piece
 
-        ## todo come up with a real way of  handling pawn promotion
-        if piece.piece_type == Piece_Type.PAWN and rank in (0,7):
-            piece.piece_type = Piece_Type.QUEEN
-
-        start_time = time.time()
         self.calculate_seers()
         self.calculate_potential_moves()
-        #self.is_white_move = not self.is_white_move
-        # for r in range(8):
-        #     for f in range(8):
-        #         self.seers[r][f] = self.find_seers(r,f)
+        self.calculate_material()
+        self.is_white_in_check = self.is_in_check(True)
+        self.is_black_in_check = self.is_in_check(False)
 
-        #         self.potential_moves[r][f] = self.find_potential_moves(r,f)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
+    def calculate_material(self):
+        self.white_pieces = [p for p in self.pieces if p.is_white]
+        self.black_pieces = [p for p in self.pieces if not p.is_white]
+        self.white_king = [p for p in self.white_pieces if p.piece_type == Piece_Type.KING][0]
+        self.black_king = [p for p in self.black_pieces if p.piece_type == Piece_Type.KING][0]
 
-        #print(f"Elapsed time finding seers: {elapsed_time} seconds")
+        # Count material
+        self.white_material = sum([p.value for p in self.white_pieces if p.piece_type != Piece_Type.KING])
+        self.black_material = sum([p.value for p in self.black_pieces if p.piece_type != Piece_Type.KING])

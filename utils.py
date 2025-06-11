@@ -29,8 +29,14 @@ def get_castling_coordinates(is_kingside,is_white):
         return rook_start,rook_dest,king_start,king_dest,gap
 
 def letter_to_number(l):
+    """
+    returns a=1, b=2, etc. for both upper and lowercase
+    """
+    return ord(l) - 97
+        
+def number_to_letter(n):
+    """
+    takes in a number and returns a lowercase letter where a=1, b=2, etc.
+    """
+    return chr(n+96)
 
-        """
-        returns a=1, b=2, etc. for both upper and lowercase
-        """
-        return ord(l) - 97
