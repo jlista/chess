@@ -22,23 +22,24 @@ Pa-a8=Q moves the a pawn to a8, promoting to queen
 Game representation:
 
 The state of the board will be shown in a diagram like this:
-
-\\---------------------------------------
-\\R'|  N'|  B'|  Q'|  K'|  B'|  N'|  R'|
-\\--------------------------------------
-\\P'|  P'|  P'|  P'|  P'|  P'|  P'|  P'|
-\\---------------------------------------
-\\   |    |    |    |    |    |    |    |
-\\---------------------------------------
-\\   |    |    |    |    |    |    |    |
-\\---------------------------------------
-\\   |    |    |    |    |    |    |    |
-\\---------------------------------------
-\\   |    |    |    |    |    |    |    |
-\\---------------------------------------
-\\ P |  P |  P |  P |  P |  P |  P |  P |
-\\---------------------------------------
-\\ R |  N |  B |  Q |  K |  B |  N |  R |
+<pre>
+---------------------------------------
+ R'|  N'|  B'|  Q'|  K'|  B'|  N'|  R'|
+---------------------------------------
+ P'|  P'|  P'|  P'|  P'|  P'|  P'|  P'|
+---------------------------------------
+   |    |    |    |    |    |    |    |
+---------------------------------------
+   |    |    |    |    |    |    |    |
+---------------------------------------
+   |    |    |    |    |    |    |    |
+---------------------------------------
+   |    |    |    |    |    |    |    |
+---------------------------------------
+ P |  P |  P |  P |  P |  P |  P |  P |
+---------------------------------------
+ R |  N |  B |  Q |  K |  B |  N |  R |
+</pre>
 
 The apostrophes represent the black pieces. A new board will be printed after each move showing the state of the game.
 
@@ -52,7 +53,7 @@ The first prompt allows you to enter a starting state. This will be in the form 
 will initialize the game with these two moves already made. This allows you to start playing from any position. If you want to start playing from the default position, just hit enter to skip this prompt.
 
 Next, you will be prompted to enter a move. Enter your move using the notation described above. If the notation is invalid or the move is illegal, you will be prompted to enter a different move. Otherwise, the move will be made and the computer will then make its move. Note that this can sometimes take a while as the engine is slow. After the game state is printed, the current sequence of moves will also be printed, so the output will look something like this:
-
+<pre>
 ---------------------------------------
  R'|  N'|  B'|  Q'|  K'|  B'|    |  R'|
 ---------------------------------------
@@ -69,6 +70,7 @@ Next, you will be prompted to enter a move. Enter your move using the notation d
  P |  P |  P |  P |    |  P |  P |  P |
 ---------------------------------------
  R |  N |  B |  Q |  K |  B |  N |  R |
+</pre>
 ['Pe-e4', 'Ng-f6']
 
 The string underneath the board shows the current sequence of moves. You can copy this and save it somewhere in order to exit and resume the game later.
