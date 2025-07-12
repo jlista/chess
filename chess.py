@@ -89,7 +89,7 @@ def main():
             print("Could not parse starting move sequence, exiting game.")
             sys.exit(1)
         for m in sequence:
-            make_setup_move(game_state,m,is_white_move)
+            make_setup_move(m,game_state,is_white_move)
             game_sequence.append(m)
             is_white_move = not is_white_move
     else:
@@ -108,5 +108,5 @@ def main():
         is_white_move = not is_white_move
 
 if __name__=="__main__":
-    cProfile.run('main()')
-    #main()
+    #cProfile.run('main()')
+    main()
