@@ -1,5 +1,4 @@
 import sys
-import time
 from move import Move, Move_Type
 from game_state import Game_State
 from piece import Piece, Piece_Type
@@ -161,7 +160,7 @@ class Evaluator:
             if node.evaluation < lowest_rating:
                 lowest_rating = node.evaluation
                 node_choice = node
-        print("fff")
+
         return game_state.move_from_notation(node_choice.sequence[0],False)
 
     def mark_line_interesting(self,move):
@@ -174,20 +173,10 @@ class Evaluator:
             self.resolve_branch(c)
 
     def prune_uninteresting_moves(self, level, is_white):
-        # if level == 3:
-        #     print("ff")
-        # if level == 2:
-        #     print("ff")
-        # if level == 1:
-        #     print("ff")
-        # if level == 0:
-        #     print("ff")
-        # if level == 4:
-        #     print("ff")
+
         MIN_PER_LEVEL = 300
         MAX_PER_LEVEL = 400
         nodes = self.move_tree[level]
-        num_nodes = len(nodes)
         interesting_nodes = []
 
         for node in nodes:
@@ -210,7 +199,6 @@ class Evaluator:
 
         num_marked_interesting = len(interesting_nodes)
         if num_marked_interesting < MIN_PER_LEVEL:
-            print("did not exceed min interesting nodes, going to pad")
             sorted_nodes = sorted(nodes,key = lambda x: x.evaluation - x.parent.evaluation, reverse = is_white)
             i = 0
             while num_marked_interesting < MIN_PER_LEVEL and i < len(sorted_nodes):
@@ -222,7 +210,6 @@ class Evaluator:
 
         # this might not be a good heuristic - maybe need a way to judge how interesting a move is and remove the less interesting ones regardless of rating
         elif len(interesting_nodes) > MAX_PER_LEVEL:
-            print("exceeded max interesting nodes, going to pare down")
             sorted_nodes = sorted(nodes,key = lambda x: x.evaluation - x.parent.evaluation, reverse = not is_white)
             i=0
             while num_marked_interesting > MAX_PER_LEVEL and i < len(sorted_nodes):
@@ -236,7 +223,6 @@ class Evaluator:
                 self.resolve_branch(node)
 
     def prune_bad_lines(self,level,is_white):
-        print(f"Pruning: length of tree {len(self.move_tree)}, level={level},# at max: {len(self.move_tree[-1])}")
        
         if level == -1: return
         elif level == 0:
@@ -256,14 +242,12 @@ class Evaluator:
             num_pruned = 0
             num_total = 0
             num_bad_interesting = 0
-            print(f"pruning layer {pruning_level}")
             parents = self.move_tree[pruning_level-1]
             for parent in [p for p in parents if not p.resolved]:
                 
                 nodes = parent.children
                 nodes_sorted = sorted(nodes,key=lambda x: x.evaluation, reverse = is_white)
                 best_so_far = nodes_sorted[0]
-                #print(f"best: {best_so_far.evaluation} - {best_so_far.sequence}")
                 for node in nodes:
                     if not node.resolved:
                         num_total += 1
@@ -275,19 +259,15 @@ class Evaluator:
                                 num_bad_interesting += 1
                                 self.resolve_branch(node)
                                 num_pruned += 1
-            print(f"Pruned {num_pruned} out of {num_total} on level {pruning_level}. {num_bad_interesting} were bad and interesting.")
-
 
             is_white = not is_white
 
 
 
-    def back_propogate_evaluations(self,level, is_white):
-        # backprogapation to update evaluation of each possible move in the tree
+    def propogate_evaluations(self,level, is_white):
         for back_level in range(level,-1,-1):
             for node in self.move_tree[back_level]:
-                if len(node.sequence) > 1 and node.sequence[1] == ['Qh-f7']:
-                    print("ggg")
+
                 if not node.resolved:
                     sorted_children = sorted(node.children, key=lambda x: x.evaluation)
 
@@ -334,7 +314,7 @@ class Evaluator:
                 player_choices.extend(child_nodes)
         
         self.move_tree.append(player_choices)
-        self.back_propogate_evaluations(level*2,is_white)
+        self.propogate_evaluations(level*2,is_white)
         self.prune_uninteresting_moves(level*2+1,is_white)
 
         self.prune_bad_lines(level*2 - 1, not is_white)
@@ -360,43 +340,20 @@ class Evaluator:
                 opponent_choices.extend(child_nodes)
 
         self.move_tree.append(opponent_choices)
-        self.back_propogate_evaluations(level*2+1,is_white)
+        self.propogate_evaluations(level*2+1,is_white)
 
         self.prune_uninteresting_moves(level*2+2,not is_white)
         self.prune_bad_lines(level*2, is_white)
         # prune bad or uninteresting moves
 
-
-
-        print("hi?")
-
-        # we need to prune at every level. For instance, if we're calculated 4 levels
-        # then at the bottom level, prune all but 10 moves. Then for each node on that level, prune all
-        # but 10 of its children, and so on. 
-
-        # moves_to_consider = sorted(self.move_tree[1], key=lambda x: x.evaluation)
-
-        # if is_white:
-        #     # if we are playing as white, the moves with low evaluations are bad
-        #     uninteresting_moves = moves_to_consider[0:-7]
-        #     # also consider some moves that look bad so we don't miss any crazy sacrifice tactics
-        #     uninteresting_moves = uninteresting_moves[3:]
-        # else:
-        #     uninteresting_moves = moves_to_consider[7:]
-        #     uninteresting_moves = uninteresting_moves[0:-3]
-        # # TODO: moves that involves checks or captures are also interesting
-        # for move in uninteresting_moves:
-        #     prune_branch(move)
-
     lines = [[],[]]
     def find_lines(self,line,game_state,depth,is_white):
-        # This is assuming we are calculating for black. Can be made dynamic
+
         legal_moves = self.find_legal_moves(game_state,is_white)
         for move in legal_moves:
             spoof_state: Game_State = move.game_state
             move.quality = self.rate_move_quality_heuristic(move,spoof_state)
             
-            #print(f"{move.get_notation()} - {move.quality} - {move.metadata}")
             newline = [move]
             responses = self.find_legal_moves(spoof_state, not is_white)
             best_response_q = -999999999999
@@ -408,8 +365,7 @@ class Evaluator:
                     best_response_q = response.quality
                     best_response = response
             self.lines[depth].append(line + newline + [best_response])
-            #print(f"the best response to {move.get_notation()} - {move.quality} is {best_response.get_notation()} - {best_response_q}")
-            #print(best_response.metadata)
+
         self.lines[depth] = sorted(self.lines[depth], key = lambda x: x[-1].quality)
         if depth == 0:
             return
@@ -426,15 +382,11 @@ class Evaluator:
     
     def rate_move_quality_heuristic(self,move,spoof_state: Game_State):
         
-        if move.get_notation() == "Nf-e6":
-            print("gotcha")
         ## TODO
         """
         Positions must be evaluated based on whose turn it is. If you have a hanging piece but it's your turn,
         this is not bad since you can just move it. But if it's the opponent's turn then you have a problem. 
         """
-
-        start_time = time.time()
 
         white_pieces = spoof_state.white_pieces
         black_pieces = spoof_state.black_pieces
@@ -454,7 +406,7 @@ class Evaluator:
             for sq in spoof_state.seen_by_square[p.loc_rank][p.loc_file]:
                 black_attackers_by_square[sq[0]][sq[1]].append(p)
 
-        # this is still broken because when calculating for white, we haven't yet removed the black kings so it will think it can attack those squares if two kings are facing
+        # TODO: this is still broken because when calculating for white, we haven't yet removed the black kings so it will think it can attack those squares if two kings are facing
         for rank in range(8):
             for file in range(8):
                 for white_attacker in white_attackers_by_square[rank][file]:
@@ -492,10 +444,6 @@ class Evaluator:
             if len(black_attackers_by_square[cr_rank][cr_file]) > 0:
                 black_seen_critical_squares += 1
 
-        # # Count developed pieces
-        # current_developed_pieces = sum([1 for p in current_pieces if p.has_moved])
-        # opponent_developed_pieces = sum([1 for p in opponent_pieces if p.has_moved])
-
         # Count defenders
         white_defenders = sum([len(white_attackers_by_square[p.loc_rank][p.loc_file]) for p in white_pieces])
         black_defenders = sum([len(black_attackers_by_square[p.loc_rank][p.loc_file]) for p in black_pieces])
@@ -506,9 +454,8 @@ class Evaluator:
 
 
         # Count potential material losses
-
         white_potential_losses = 0
-        white_escapable_pieces = [] # currently only checks if it can move to a safe square. Also need to look for blocks
+        white_escapable_pieces = [] # TODO: currently only checks if it can move to a safe square. Also need to look for blocks
         white_trapped_pieces = []
         for p in [p for p in white_pieces if p.piece_type is not Piece_Type.KING]:
             loss = 0
@@ -516,12 +463,12 @@ class Evaluator:
             if len(piece_attackers) > 0:
 
 
-                # This is WRONG because get_potential_moves counts occupied squares, even if it's occupied by your own pieces
+                # TODO: this is WRONG because get_potential_moves counts occupied squares, even if it's occupied by your own pieces
                 safe_squares = [sq for sq in spoof_state.potential_moves_from_square[p.loc_rank][p.loc_file] if len(black_attackers_by_square[sq[0]][sq[1]]) == 0]
 
                 piece_defenders = white_attackers_by_square[p.loc_rank][p.loc_file]
                 weakest_attacker = sorted(piece_attackers, key=lambda x: x.value)[0]
-                if len(piece_defenders) == 0: # need to add logic to see if using defender would be legal (pin or defender is king)
+                if len(piece_defenders) == 0: # TODO: need to add logic to see if using defender would be legal (pin or defender is king)
                     loss = p.value
                 elif weakest_attacker.value < p.value:
                     loss = p.value - weakest_attacker.value
@@ -551,7 +498,7 @@ class Evaluator:
 
                 piece_defenders = black_attackers_by_square[p.loc_rank][p.loc_file]
                 weakest_attacker = sorted(piece_attackers, key=lambda x: x.value)[0]
-                if len(piece_defenders) == 0: # need to add logic to see if using defender would be legal (pin or defender is king)
+                if len(piece_defenders) == 0: # TODO: add logic to see if using defender would be legal (pin or defender is king)
                     loss = p.value
                 elif weakest_attacker.value < p.value:
                     loss = p.value - weakest_attacker.value
@@ -588,6 +535,4 @@ class Evaluator:
 
         quality = material_score + loss_score + seen_score + critical_seen_score + defender_score + attacker_score
         
-
         return quality
-

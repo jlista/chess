@@ -1,27 +1,23 @@
 import json
 import re
 import sys
-import time
 from game_state import Game_State
 from evaluator import Evaluator
-import cProfile
 
 MOVE_REGEX = r'[PNBRQK][a-h]-[a-h][1-8]$|O-O$|O-O-O$|[PNBRQK][a-h]-[a-h][1-8]=[NBRQ]$'
 
 eval = Evaluator()
 
 def make_computer_move(game_state):
+    # use the engine to make a move
     global Evaluator
 
-    start_time = time.time()
     move = eval.find_next_move(game_state,False)
     game_state.execute(move)
-    end_time = time.time()
-    elapsed_time = end_time-start_time
-    print(f"Elapsed time  for all calculations: {elapsed_time} seconds")
     return move.get_notation()
     
-def make_human_move(game_state,is_white_move):
+def make_human_move(game_state, is_white_move):
+    # execute a move that was entered by the human player
     while True:
         move_notation = input("Please enter your move: ")
         if re.match(MOVE_REGEX,move_notation):
@@ -32,9 +28,10 @@ def make_human_move(game_state,is_white_move):
             else:
                 print("Illegal move, please try again.")
         else:
-            print("Invalid move, please try again,")
+            print("Could not parse move notation, please try again.")
 
 def make_setup_move(m,game_state,is_white_move):
+    # execute a move that was provided as part of the game's starting state
     if re.match(MOVE_REGEX,m):
         move = game_state.move_from_notation(m, is_white_move)
         if move is not None and eval.is_legal_move(move,game_state):
@@ -72,12 +69,7 @@ def main():
 
     game_state = Game_State()
     game_state.setup_pieces()
-    # def test():
-        
-    #     test_mv = game_state.move_from_notation("Pe-e4",True)
-    #     game_state.execute_hypothetical(test_mv)
-    # test()
-    # sys.exit(1)
+
     is_white_move = True
     game_sequence = []
 
@@ -108,5 +100,4 @@ def main():
         is_white_move = not is_white_move
 
 if __name__=="__main__":
-    #cProfile.run('main()')
     main()

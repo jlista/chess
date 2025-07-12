@@ -3,7 +3,7 @@ from piece import Piece_Type
 from piece import Piece
 from move import Move, Move_Type
 from utils import *
-import time
+
 class Game_State:
     pieces = []
     board = []
@@ -117,32 +117,6 @@ class Game_State:
         if len(attackers) > 0:
             in_check = True
         return in_check
-    
-    def is_in_dangerous_check(self,is_white):
-        in_check = self.is_in_check(is_white)
-        if not in_check: return False
-        for piece in self.pieces:
-            if piece.piece_type == Piece_Type.KING and piece.is_white == is_white:
-                attackers = self.get_attackers(piece.loc_rank, piece.loc_file, is_white)
-
-        # for now we assume there is only one checking piece - NOT a good assumption!
-        checking_piece = attackers[0]
-
-        defenders = self.get_defenders(checking_piece.loc_rank, checking_piece.loc_file, is_white)
-        counterdefenders = self.get_attackers(checking_piece.loc_rank, checking_piece.loc_file, is_white)
-        defenders = sorted(defenders, key = lambda x: x.value)
-        if len(defenders) == 0:
-            # if we can't capture the checking piece, it's dangerous
-            return True
-        elif len(counterdefenders) == 0:
-            # if we can capture it risk-free, it's not dangerous
-            return False
-        else:
-            # if we capture it and run into another attack, assume it's dangerous 
-            # this avoids batteries, but we could use some better logic - keep this logic if the defender is the king itself
-            # otherwise, calculate whether losing the defender it worth it
-            return True
-
 
     def move_from_notation(self,notation, is_white):
 
@@ -234,6 +208,7 @@ class Game_State:
             self.move_piece(rook,rook_dest[0],rook_dest[1])
 
         return notation
+    
     def execute_hypothetical(self,move):
 
         hypothetical_state = self.make_copy()
@@ -241,7 +216,6 @@ class Game_State:
         for sp in hypothetical_state.pieces:
             if sp.loc_rank == move.piece.loc_rank and sp.loc_file == move.piece.loc_file:
                 hypothetical_move.piece = sp
-        start_time = time.time()
         hypothetical_state.execute(hypothetical_move)
         return hypothetical_state
     
