@@ -10,14 +10,14 @@ The notation used by this engine differs from standard chess notation.
 
 Examples:
 
-Pe-e5 moves the e pawn to e5
-Qa-b4 moves the queen to b4
-Nb-c3 moves the knight on the b file to c3
-Pa-b3 moves the a pawn to b3, capturing a piece (note that there is no "x" marking a capture)
-Pa-b6 moves the a pawn to b6, capturing a pawn on b5 en passant (assuming this is a legal move)
-O-O castles kingside
-O-O-O castles queenside
-Pa-a8=Q moves the a pawn to a8, promoting to queen 
+Pe-e5 moves the e pawn to e5 <br>
+Qa-b4 moves the queen to b4 <br>
+Nb-c3 moves the knight on the b file to c3 <br>
+Pa-b3 moves the a pawn to b3, capturing a piece (note that there is no "x" marking a capture) <br>
+Pa-b6 moves the a pawn to b6, capturing a pawn on b5 en passant (assuming this is a legal move) <br>
+O-O castles kingside <br>
+O-O-O castles queenside <br>
+Pa-a8=Q moves the a pawn to a8, promoting to queen <br>
 
 Game representation:
 
